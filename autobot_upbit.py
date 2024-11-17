@@ -1,17 +1,11 @@
 import pyupbit
 import numpy as np
+from autobot_apikey import *
 from autobot_func import *
-
-# slack api webhooks
-SLACK_HOOKS_URL = "https://hooks.slack.com/services/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"
-
-# upbit api keys
-ACCESS_KEY = "P4oH9bjAqXHQ2JbyTkogKkbrGR0BNPQXvWpUI8Ml"
-SECRET_KEY = "craU0SgR68iZBFdwZ1bKy9UxwWY7x2phu12kAOtf"
 
 # coin & env
 #COIN = "KRW-XRP"
-COINS = ["KRW-BTC", "KRW-XRP"]
+COINS = ["KRW-BTC", "KRW-XRP", "KRW-ETH"]
 INTERVAL = "minute15"
 BUY_AMOUNT = 5000
 
@@ -33,10 +27,7 @@ def cancel_open_orders(coin):
 # trade bot func
 def trade_bot():
     try:
-        notify_slack(SLACK_HOOKS_URL, "trade_bot() has been executed", "notify")
-
-        buy_message = ""
-        sell_message = ""
+        trade_message = f"trade_bot() has been executed\n"
         for COIN in COINS:
             print(f"process {COIN}")
             
@@ -57,53 +48,51 @@ def trade_bot():
                 f"MACD: {macd.iloc[-1]:.2f}, Signal: {signal.iloc[-1]:.2f}, "
                 f"BB 상단: {upper_band:.2f}, 하단: {lower_band:.2f}"
             )
+
+            trade_data = {
+                "data": data,
+                "current_price": current_price,
+                "rsi": rsi,
+                "ma": ma,
+                "ma_100": ma_100,
+                "macd": macd,
+                "signal": signal,
+                "upper_band": upper_band,
+                "lower_band": lower_band,
+                "close_price": close_price,
+                "recent_close_prices": recent_close_prices,
+            }
         
             # 매수 조건
-            if (
-                (float(rsi.iloc[-1]) < 30 and float(macd.iloc[-1]) > float(signal.iloc[-1]) and close_price <= lower_band and current_price < ma)
-                or (close_price <= lower_band and close_price > lower_band * 1.02)  # 볼린저밴드 하단 반등
-                or (close_price <= ma_100 and close_price > ma_100 * 0.98)  # 주요 지지선 근처에서 반등
-                or (close_price >= recent_close_prices * 1.05)  # 최근 하락폭 대비 가격 회복
-            ):
+            if should_buy(trade_data):
                 krw_balance = upbit.get_balance("KRW")
                 if krw_balance > BUY_AMOUNT:
                     buy_result = upbit.buy_market_order(COIN, BUY_AMOUNT)
-                    buy_message += f"[notify] buy {COIN} units for {BUY_AMOUNT} KRW: {buy_result}"
-                    # print(f"[buy] {COIN} units for {BUY_AMOUNT} KRW: {buy_result}")
+                    trade_message += f"[notify] buy {COIN} units for {BUY_AMOUNT} KRW: {buy_result}\n"
                 else:
-                    print(f"[error buy] don't have the cash to buy {COIN}")
-
-            else:
-                print(f"[condition mismatch] not eligible to buy")
+                    trade_message+= f"[notify] don't have the cash to buy {COIN}\n"
 
             # 매도 조건
-            if (
-                (float(rsi.iloc[-1]) > 70 and float(rsi.iloc[-3]) > float(rsi.iloc[-2]) > float(rsi.iloc[-1]))  # RSI가 연속 하락
-                or (float(macd.iloc[-1]) < float(signal.iloc[-1]) and float(macd.iloc[-2]) > float(signal.iloc[-2]))  # MACD와 Signal 하향 교차
-                or (close_price >= upper_band and close_price < upper_band * 0.98)  # 볼린저 밴드 상단 돌파 후 2% 하락
-                or (current_price < recent_close_prices * 0.95)  # 최근 5개 캔들 평균보다 5% 하락
-                or (data['volume'].iloc[-1] < recent_close_prices * 0.8)  # 거래량 감소:
-            ):
+            elif should_sell(trade_data):
                 coin_balance = upbit.get_balance(COIN.split('-')[1])
                 if coin_balance > 0:
                     sell_amount = coin_balance * 0.5
                     sell_value_in_krw = sell_amount * current_price
                     if sell_value_in_krw < 5000:
-                        print(f"[error sell] No sales below 5000won")
+                        print(f"[error] No sales below 5000won")
                     else:
                         sell_result = upbit.sell_market_order(COIN, sell_amount)
-                        sell_message += f"[notify] sell {COIN} {sell_amount}: {sell_result}"
-                        # print(f"[sell] {sell_amount} units {COIN}: {sell_result}")
+                        trade_message += f"[notify] sell {COIN} {sell_amount}: {sell_result}\n"
                 else:
-                    print(f"[error sell] dont have {COIN}" )
+                    trade_message += f"[error] dont have {COIN}\n"
 
             else:
-                print(f"[condition mismatch] not eligible to sell")
+                trade_message += f"[notify] {COIN} condition mismatch: not eligible to buy or sell\n"
 
-        notify_slack(SLACK_HOOKS_URL, buy_message, "notify")
-        notify_slack(SLACK_HOOKS_URL, sell_message, "notify")
+        notify_slack(SLACK_HOOKS_URL, trade_message, "notify")
 
     except Exception as e:
+        message += f"{e}\n"
         print(f"[error] {e}")
 
 # 메인 함수 선언
