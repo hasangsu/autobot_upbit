@@ -79,7 +79,7 @@ def trade_bot():
                     sell_amount = coin_balance * 0.5
                     sell_value_in_krw = sell_amount * current_price
                     if sell_value_in_krw < 5000:
-                        print(f"[error] No sales below 5000won")
+                        trade_message += f"[error] No sales below 5000won"
                     else:
                         sell_result = upbit.sell_market_order(COIN, sell_amount)
                         trade_message += f"[notify] sell {COIN} {sell_amount}: {sell_result}\n"
