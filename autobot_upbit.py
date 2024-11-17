@@ -70,7 +70,7 @@ def trade_bot():
                     buy_result = upbit.buy_market_order(COIN, BUY_AMOUNT)
                     trade_message += f"[notify] buy {COIN} units for {BUY_AMOUNT} KRW: {buy_result}\n"
                 else:
-                    trade_message+= f"[notify] don't have the cash to buy {COIN}\n"
+                    trade_message+= f"[error] don't have the cash to buy {COIN}\n"
 
             # 매도 조건
             elif should_sell(trade_data):
@@ -84,7 +84,7 @@ def trade_bot():
                         sell_result = upbit.sell_market_order(COIN, sell_amount)
                         trade_message += f"[notify] sell {COIN} {sell_amount}: {sell_result}\n"
                 else:
-                    trade_message += f"[error] dont have {COIN}\n"
+                    trade_message += f"[error] sell fail: dont have {COIN}\n"
 
             else:
                 trade_message += f"[notify] {COIN} condition mismatch: not eligible to buy or sell\n"
@@ -92,7 +92,6 @@ def trade_bot():
         notify_slack(SLACK_HOOKS_URL, trade_message, "notify")
 
     except Exception as e:
-        message += f"{e}\n"
         print(f"[error] {e}")
 
 # 메인 함수 선언
