@@ -1,6 +1,46 @@
 import numpy as np
 import pandas as pd
 import requests
+import os
+from joblib import dump, load
+
+# 모델과 스케일러 저장 및 로드
+def save_model(ticker, extension, model, scaler):
+    print(f"[notify] save model {ticker}")
+    dump(model, f"{ticker}_{extension}_model.pkl")
+    dump(scaler, f"{ticker}_{extension}_scaler.pkl")
+
+def load_model(ticker, extension):
+    model_path = f"{ticker}_{extension}_model.pkl"
+    scaler_path = f"{ticker}_{extension}_scaler.pkl"
+    if os.path.exists(model_path) and os.path.exists(scaler_path):
+        print(f"[notify] success load {ticker} model")
+        model = load(model_path)
+        scaler = load(scaler_path)
+        return model, scaler
+    else:
+        print(f"[notify] error load {ticker} model -> new model")
+        return None, None
+
+# rsi series
+def calculate_rsi_series(data, period=14, target=-1):
+    delta = data['close'].diff(1).dropna()
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+
+    '''
+    # sma
+    avg_gain = pd.Series(gain).rolling(window=period).mean()
+    avg_loss = pd.Series(loss).rolling(window=period).mean()
+    '''
+    
+    # ema
+    _gain = pd.Series(gain).ewm(com=(period - 1), min_periods=period).mean()
+    _loss = pd.Series(loss).ewm(com=(period - 1), min_periods=period).mean()
+
+    rs = _gain / _loss
+    rsi = 100 - (100 / (1 + rs))
+    return float(pd.Series(rsi, name="RSI").iloc[target])
 
 # rsi
 def calculate_rsi(data, period=14, target=-1):
@@ -42,7 +82,16 @@ def calculate_bollinger_bands(data, window=20, std_dev=2, target=-1):
     upper_band = ma + (std_dev * std)
     lower_band = ma - (std_dev * std)
     return float(upper_band.iloc[target]), float(lower_band.iloc[target]), float(data['close'].iloc[target])
+    
 
+# bollinger_bands
+def calculate_bollinger_bands_series(data, window=20, std_dev=2):
+    ma = data['close'].rolling(window=window).mean()
+    std = data['close'].rolling(window=window).std()
+    upper_band = ma + (std_dev * std)
+    lower_band = ma - (std_dev * std)
+    return upper_band, lower_band
+    
 # buy conis
 def should_buy(trade_data):
     return (
@@ -86,3 +135,6 @@ def notify_slack(url, msg, title):
         )
     except Exception as ex:
         print(ex)
+
+def create_notification(trade, status, ticker, details):
+    return f"[notify] {trade}, {status}, {ticker}, {details}"
