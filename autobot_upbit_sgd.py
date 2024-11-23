@@ -88,33 +88,33 @@ def generate_signals(model, scaler, ticker):
     if signal == 1:
         print(f"{ticker}: 매수 신호 발생 - 현재가 {current_price}")
         # # 매수
-        # krw_balance = upbit.get_balance("KRW")
-        # if krw_balance > BUY_AMOUNT:
-        #     buy_result = upbit.buy_market_order(ticker, BUY_AMOUNT)
-        #     trade_message += create_notification("buy", "success", ticker, BUY_AMOUNT)
-        # else:
-        #     trade_message += create_notification("buy", "fail", ticker, f"don't have the cash to buy") 
+        krw_balance = upbit.get_balance("KRW")
+        if krw_balance > BUY_AMOUNT:
+            buy_result = upbit.buy_market_order(ticker, BUY_AMOUNT)
+            trade_message += create_notification("buy", "success", ticker, BUY_AMOUNT)
+        else:
+            trade_message += create_notification("buy", "fail", ticker, f"don't have the cash to buy") 
 
     elif signal == -1:
         print(f"{ticker}: 매도 신호 발생 - 현재가 {current_price}")
         # 매도
-        # coin_balance = upbit.get_balance(ticker.split('-')[1])
-        # if coin_balance > 0:
-        #     sell_amount = coin_balance * 0.5
-        #     sell_value_in_krw = sell_amount * current_price
-        #     if sell_value_in_krw < 5000:
-        #         sell_result = upbit.sell_market_order(ticker, coin_balance)
-        #         trade_message += create_notification("sell", "success", ticker, f"remain {coin_balance}") 
-        #     else:
-        #         sell_result = upbit.sell_market_order(ticker, sell_amount)
-        #         trade_message += create_notification("sell", "success", ticker, f"remain {coin_balance}") 
-        # else:
-        #     trade_message += create_notification("sell", "fail", ticker, f"don't have {ticker}") 
+        coin_balance = upbit.get_balance(ticker.split('-')[1])
+        if coin_balance > 0:
+            sell_amount = coin_balance * 0.5
+            sell_value_in_krw = sell_amount * current_price
+            if sell_value_in_krw < 5000:
+                sell_result = upbit.sell_market_order(ticker, coin_balance)
+                trade_message += create_notification("sell", "success", ticker, f"remain {coin_balance}") 
+            else:
+                sell_result = upbit.sell_market_order(ticker, sell_amount)
+                trade_message += create_notification("sell", "success", ticker, f"remain {coin_balance}") 
+        else:
+            trade_message += create_notification("sell", "fail", ticker, f"don't have {ticker}") 
     else:
         # 홀드
         trade_message += create_notification("hold", "hold", ticker, f"hold") 
 
-    # notify_slack(SLACK_HOOKS_URL, trade_message, "notify")
+    notify_slack(SLACK_HOOKS_URL, trade_message, "notify")
 
 # 코인별 처리 함수
 def process_ticker(ticker):
