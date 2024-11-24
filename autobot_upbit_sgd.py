@@ -53,62 +53,72 @@ def create_training_data(data):
     labels = data['target'].values
     return features, labels
 
-# 학습 및 모델 생성
-def train_or_update_model(ticker, model=None, scaler=None):
-    print(f"[notify] start learning/updating {ticker} model")
-    data = get_ohlcv_data(ticker, count=1000, period=1.5)
+def train_model(ticker):
+    data = get_ohlcv_data(ticker, count=1000, period=1)
+
+    # 특성 (X)과 레이블 (y) 생성
     features, labels = create_training_data(data)
-    if features is None or len(features) == 0:
-        print(f"[error] {ticker} 특징 데이터 부족")
-        return None, None
 
-    # 기존 모델 및 스케일러 로드
-    if model is None or scaler is None:
-        print(f"[notify] 모델이나 스케일러가 없어서 새로 학습합니다. {ticker}")
-        scaler = StandardScaler()
-        features = scaler.fit_transform(features)  # scaler에 데이터를 학습시킨 후 변환
+    # 마지막 행을 제외하여 데이터의 크기 맞추기
+    features = features[:-1]
+    labels = labels[:-1]
 
-        # 하이퍼파라미터 튜닝을 위한 GridSearchCV 설정
-        param_grid = {
-            'alpha': [0.0001, 0.001, 0.01, 0.1],
-            'max_iter': [1000, 2000],
-            'penalty': ['l2', 'l1'],
-            'learning_rate': ['constant', 'optimal', 'invscaling'],
-            'eta0': [0.001, 0.01, 0.1],  # eta0 값 추가
-            'class_weight': ['balanced']  # 불균형 클래스 처리
-        }
+    # 데이터 표준화
+    scaler = StandardScaler()
+    features_scaled = scaler.fit_transform(features)
 
-        model = SGDClassifier(random_state=42)
-        grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, n_jobs=-1)
-        grid_search.fit(features, labels)
+    # 하이퍼파라미터 그리드 정의
+    param_grid = {
+        'loss': ['hinge', 'log_loss', 'squared_hinge'],  # 손실 함수
+        'penalty': ['l2', 'l1', 'elasticnet'],      # 정규화 방법
+        'alpha': [0.0001, 0.001, 0.01, 0.1],        # 정규화 강도
+        'learning_rate': ['constant', 'optimal', 'invscaling', 'adaptive'],  # 학습률 방식
+        'max_iter': [5000, 1000],  # 반복 횟수
+        'tol': [1e-3, 1e-4],  # 수렴 허용 오차
+        'eta0': [0.01, 0.1],  # 초기 학습률
+    }
 
-        # 최적의 모델 파라미터로 학습된 모델 반환
-        model = grid_search.best_estimator_
-        print(f"[success] {ticker} 모델 학습 완료")
-    else:
-        print(f"[notify] 기존 모델을 업데이트합니다. {ticker}")
-        features = scaler.transform(features)  # 이미 학습된 scaler를 사용하여 변환
-        model.partial_fit(features, labels)  # SGDClassifier의 incremental 학습 방식
-        print(f"[success] {ticker} 모델 업데이트 완료")
+    # GridSearchCV 객체 생성
+    grid_search = GridSearchCV(SGDClassifier(random_state=42), param_grid, cv=5, n_jobs=-1, verbose=1)
 
-    # 모델 및 스케일러 저장
-    save_model(ticker, f"sgd", model, scaler)
-    return model, scaler
+    # 모델 학습 및 하이퍼파라미터 튜닝
+    grid_search.fit(features_scaled, labels)
+
+    # # 최적 하이퍼파라미터와 성능 출력
+    print("최적 하이퍼파라미터: ", grid_search.best_params_)
+    print("최고 성능: ", grid_search.best_score_)
+
+    # 최적 모델 반환
+    best_model = grid_search.best_estimator_
+
+    # 모델과 스칼라 반환
+    save_model(ticker, f"sgd", f"pkl", best_model, scaler)
+    return best_model, scaler
 
 # 매매 신호 생성 및 실거래 실행
 def generate_signals(model, scaler, ticker):
-    data = get_ohlcv_data(ticker, count=200, period=0.1)
-    features, _ = create_training_data(data)
-    features = scaler.transform(features)
+    data = get_ohlcv_data(ticker, count=100)
 
-    predictions = model.predict(features)
+    # 특성 (X)과 레이블 (y) 생성
+    features, labels = create_training_data(data)
+
+    # 마지막 행을 제외하여 데이터의 크기 맞추기
+    features = features[:-1]
+    labels = labels[:-1]
+
+    new_features_scaled = scaler.transform(features)
+    predictions = model.predict(new_features_scaled)
     signal = predictions[-1]
-    current_price = pyupbit.get_current_price(ticker)
-    
+    recent_signals = predictions[-5:]
     trade_message = f"trade_bot({signal}) has been executed\n"
+    
+    # 모델 업데이트 (온라인 학습)
+    model.partial_fit(new_features_scaled, labels)  # 새로운 데이터를 학습에 추가
+
+    current_price = pyupbit.get_current_price(ticker)
     if signal == 1:
         print(f"{ticker}: 매수 신호 발생 - 현재가 {current_price}")
-        # # 매수
+        # 매수
         krw_balance = upbit.get_balance("KRW")
         if krw_balance > BUY_AMOUNT:
             buy_result = upbit.buy_market_order(ticker, BUY_AMOUNT)
@@ -116,7 +126,8 @@ def generate_signals(model, scaler, ticker):
         else:
             trade_message += create_notification("buy", "fail", ticker, f"don't have the cash to buy") 
 
-    elif signal == -1:
+    # elif signal == -1:
+    elif (recent_signals == -1).sum() >= 5:
         print(f"{ticker}: 매도 신호 발생 - 현재가 {current_price}")
         # 매도
         coin_balance = upbit.get_balance(ticker.split('-')[1])
@@ -133,20 +144,20 @@ def generate_signals(model, scaler, ticker):
             trade_message += create_notification("sell", "fail", ticker, f"don't have {ticker}") 
     else:
         # 홀드
+        print(f"{ticker}: 홀드 신호 발생 - 현재가 {current_price}")
         trade_message += create_notification("hold", "hold", ticker, f"hold") 
 
     notify_slack(SLACK_HOOKS_URL, trade_message, "notify")
 
 # 코인별 처리 함수
 def process_ticker(ticker):
-    model, scaler = load_model(ticker, f"sgd")
+    model, scaler = load_model(ticker, f"sgd", f"pkl")
     if model is None or scaler is None:
-        model, scaler = train_or_update_model(ticker)  # 모델 학습
-    else:
-        model, scaler = train_or_update_model(ticker, model, scaler)  # 모델 업데이트
-    
+        model, scaler = train_model(ticker)  # 모델 학습
+
     try:
         generate_signals(model, scaler, ticker)
+        save_model(ticker, f"sgd", f"pkl", model, scaler)
     except Exception as e:
         print(f"[error] 신호 생성 중 오류 발생 ({ticker}): {e}")
 

@@ -5,14 +5,14 @@ import os
 from joblib import dump, load
 
 # 모델과 스케일러 저장 및 로드
-def save_model(ticker, extension, model, scaler):
+def save_model(ticker, type, extension, model, scaler):
     print(f"[notify] save model {ticker}")
-    dump(model, f"{ticker}_{extension}_model.pkl")
-    dump(scaler, f"{ticker}_{extension}_scaler.pkl")
+    dump(model, f"{ticker}_{type}_model.{extension}")
+    dump(scaler, f"{ticker}_{type}_scaler.{extension}")
 
-def load_model(ticker, extension):
-    model_path = f"{ticker}_{extension}_model.pkl"
-    scaler_path = f"{ticker}_{extension}_scaler.pkl"
+def load_model(ticker, type, extension):
+    model_path = f"{ticker}_{type}_model.{extension}"
+    scaler_path = f"{ticker}_{type}_scaler.{extension}"
     if os.path.exists(model_path) and os.path.exists(scaler_path):
         print(f"[notify] success load {ticker} model")
         model = load(model_path)
