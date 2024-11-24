@@ -2,7 +2,9 @@ import pyupbit
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import SGDClassifier
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import train_test_split
 from joblib import dump, load
 import os
@@ -14,6 +16,7 @@ from autobot_func import *
 COINS = ["KRW-BTC", "KRW-XRP", "KRW-ETH", "KRW-DOGE"]
 INTERVAL = "minute15"
 BUY_AMOUNT = 5000
+FEE_RATE = 0.0005 * 2  # 수수료 비율 (한번의 거래 수수료 0.05% * 매수와 매도)
 
 # upbit instance
 upbit = pyupbit.Upbit(ACCESS_KEY, SECRET_KEY)
@@ -39,12 +42,17 @@ def create_training_data(data):
     data['ma15'] = calculate_ma(data, period=15)
     data['ma50'] = calculate_ma(data, period=50)
     data['rsi'] = calculate_rsi_series(data)
-    # data['upper_band'], data['lower_band'] = calculate_bollinger_bands_series(data)
+    data['volatility'] = (data['high'] - data['low']) / data['low']  # 변동성
+    data['volume_change_rate'] = data['volume'].pct_change()  # 거래량 변화율
+    data['upper_band'], data['lower_band'] = calculate_bollinger_bands_series(data)
+    data['macd'], data['signal'] = calculate_macd(data)
 
-    data['target'] = np.where(data['close'].shift(-1) > data['close'], 1, 0)
+    target_return = (data['close'].shift(-1) - data['close']) / data['close'] - FEE_RATE
+    data['target'] = np.where(target_return > 0.002, 1,   # 상승(수익 > 0.2%) -> 매수
+                              np.where(target_return < -0.002, -1, 0))  # 하락(손실 > 0.2%) -> 매도
 
     data = data.dropna()
-    features = data[['ma15', 'ma50', 'rsi']].values
+    features = data[['ma15', 'ma50', 'rsi', 'volatility', 'volume_change_rate', 'upper_band', 'lower_band', 'macd', 'signal']].values
     labels = data['target'].values
     return features, labels
 
@@ -58,23 +66,43 @@ def train_model(ticker):
         return None, None
 
     scaler = StandardScaler()
-    features = scaler.fit_transform(features)
+    features_scaled = scaler.fit_transform(features)
 
-    X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=0.2, random_state=42)
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_train, y_train)
-    print(f"[success] success learning {ticker} model -> (accuracy: {model.score(X_test, y_test):.2f})")
+    # 하이퍼파라미터 그리드 정의 (RandomForestClassifier에 적합한 하이퍼파라미터)
+    param_grid = {
+        'n_estimators': [200, 300, 400],  # 트리의 수
+        'max_depth': [10, 20, 30, None],  # 트리의 최대 깊이
+        'min_samples_split': [2, 5, 10],  # 분할을 위한 최소 샘플 수
+        'min_samples_leaf': [1, 2, 4],    # 리프 노드의 최소 샘플 수
+        'max_features': ['auto', 'sqrt', 'log2'],  # 각 트리에서 사용할 특성의 수
+        'bootstrap': [True, False],  # 부트스트랩 샘플링 여부
+    }
 
-    return model, scaler
+    # GridSearchCV 객체 생성
+    grid_search = GridSearchCV(RandomForestClassifier(random_state=42), param_grid, cv=3, n_jobs=-1, verbose=1)
+
+    # 모델 학습 및 하이퍼파라미터 튜닝
+    grid_search.fit(features_scaled, labels)
+
+    # 최적 하이퍼파라미터와 성능 출력
+    print("최적 하이퍼파라미터: ", grid_search.best_params_)
+    print("최고 성능: ", grid_search.best_score_)
+
+    # 최적 모델 반환
+    best_model = grid_search.best_estimator_
+
+    return best_model, scaler
 
 # 매매 신호 생성 및 실거래 실행
 def generate_signals(model, scaler, ticker):
-    data = get_ohlcv_data(ticker, count=200, period=0.1)
+    data = get_ohlcv_data(ticker, count=100, period=0.1)
     features, _ = create_training_data(data)
     features = scaler.transform(features)
 
     predictions = model.predict(features)
     signal = predictions[-1]
+    recent_signals = predictions[-5:]
+
     current_price = pyupbit.get_current_price(ticker)
     
     trade_message = f"trade_bot({signal}) has been executed\n"
@@ -88,12 +116,13 @@ def generate_signals(model, scaler, ticker):
         else:
             trade_message += create_notification("buy", "fail", ticker, f"don't have the cash to buy") 
 
-    else:
+    # elif signal == -1:
+    elif (recent_signals == -1).sum() >= 5:
         print(f"{ticker}: 매도 신호 발생 - 현재가 {current_price}")
         # 매도
         coin_balance = upbit.get_balance(ticker.split('-')[1])
         if coin_balance > 0:
-            sell_amount = coin_balance * 0.5
+            sell_amount = coin_balance * 0.25
             sell_value_in_krw = sell_amount * current_price
             if sell_value_in_krw < 5000:
                 sell_result = upbit.sell_market_order(ticker, coin_balance)
@@ -103,6 +132,10 @@ def generate_signals(model, scaler, ticker):
                 trade_message += create_notification("sell", "success", ticker, f"remain {coin_balance}") 
         else:
             trade_message += create_notification("sell", "fail", ticker, f"don't have {ticker}") 
+    else:
+        # 홀드
+        print(f"{ticker}: 홀드 신호 발생 - 현재가 {current_price}")
+        trade_message += create_notification("hold", "hold", ticker, f"hold") 
 
     notify_slack(SLACK_HOOKS_URL, trade_message, "notify")
 
