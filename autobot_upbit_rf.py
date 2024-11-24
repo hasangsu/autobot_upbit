@@ -70,7 +70,7 @@ def train_model(ticker):
 
     # 하이퍼파라미터 그리드 정의 (RandomForestClassifier에 적합한 하이퍼파라미터)
     param_grid = {
-        'n_estimators': [200, 300, 400],  # 트리의 수
+        'n_estimators': [200, 300, 500],  # 트리의 수
         'max_depth': [10, 20, 30, None],  # 트리의 최대 깊이
         'min_samples_split': [2, 5, 10],  # 분할을 위한 최소 샘플 수
         'min_samples_leaf': [1, 2, 4],    # 리프 노드의 최소 샘플 수
@@ -91,6 +91,7 @@ def train_model(ticker):
     # 최적 모델 반환
     best_model = grid_search.best_estimator_
 
+    save_model(ticker, f"rf", f"pkl", best_model, scaler)
     return best_model, scaler
 
 # 매매 신호 생성 및 실거래 실행
@@ -141,7 +142,9 @@ def generate_signals(model, scaler, ticker):
 
 # 코인별 처리 함수
 def process_ticker(ticker):
-    model, scaler = train_model(ticker)
+    model, scaler = load_model(ticker, f"rf", f"pkl")
+    if model is None or scaler is None:
+        model, scaler = train_model(ticker)  # 모델 학습
     
     try:
         generate_signals(model, scaler, ticker)
