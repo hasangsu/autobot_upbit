@@ -90,8 +90,6 @@ def train_model(ticker):
 
     # 최적 모델 반환
     best_model = grid_search.best_estimator_
-
-    save_model(ticker, f"rf", f"pkl", best_model, scaler)
     return best_model, scaler
 
 # 매매 신호 생성 및 실거래 실행
@@ -145,6 +143,7 @@ def process_ticker(ticker):
     model, scaler = load_model(ticker, f"rf", f"pkl")
     if model is None or scaler is None:
         model, scaler = train_model(ticker)  # 모델 학습
+        save_model(ticker, f"rf", f"pkl", model, scaler)
     
     try:
         generate_signals(model, scaler, ticker)
