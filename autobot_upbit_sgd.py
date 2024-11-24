@@ -12,6 +12,7 @@ from autobot_func import *
 COINS = ["KRW-BTC", "KRW-XRP", "KRW-ETH", "KRW-DOGE"]
 INTERVAL = "minute15"
 BUY_AMOUNT = 5000
+FEE_RATE = 0.0005 * 2  # 수수료 비율 (한번의 거래 수수료 0.05% * 매수와 매도)
 
 # upbit instance
 upbit = pyupbit.Upbit(ACCESS_KEY, SECRET_KEY)
@@ -37,13 +38,17 @@ def create_training_data(data):
     data['ma15'] = calculate_ma(data, period=15)
     data['ma50'] = calculate_ma(data, period=50)
     data['rsi'] = calculate_rsi_series(data)
+    data['volatility'] = (data['high'] - data['low']) / data['low']  # 변동성
+    data['volume_change_rate'] = data['volume'].pct_change()  # 거래량 변화율
     # data['upper_band'], data['lower_band'] = calculate_bollinger_bands_series(data)
 
-    data['target'] = np.where(data['close'].shift(-1) > data['close'], 1,   # 상승 -> 매수
-                              np.where(data['close'].shift(-1) < data['close'], -1, 0))  # 하락 -> 매도, 나머지 -> 홀드
+    # 목표 수익률 계산 (수수료 반영)
+    target_return = (data['close'].shift(-1) - data['close']) / data['close'] - FEE_RATE
+    data['target'] = np.where(target_return > 0.002, 1,   # 상승(수익 > 0.2%) -> 매수
+                              np.where(target_return < -0.002, -1, 0))  # 하락(손실 > 0.2%) -> 매도
     
     data = data.dropna()
-    features = data[['ma15', 'ma50', 'rsi']].values
+    features = data[['ma15', 'ma50', 'rsi', 'volatility', 'volume_change_rate']].values
     labels = data['target'].values
     return features, labels
 
@@ -100,7 +105,7 @@ def generate_signals(model, scaler, ticker):
         # 매도
         coin_balance = upbit.get_balance(ticker.split('-')[1])
         if coin_balance > 0:
-            sell_amount = coin_balance * 0.5
+            sell_amount = coin_balance * 0.25
             sell_value_in_krw = sell_amount * current_price
             if sell_value_in_krw < 5000:
                 sell_result = upbit.sell_market_order(ticker, coin_balance)
@@ -128,8 +133,6 @@ def process_ticker(ticker):
         generate_signals(model, scaler, ticker)
     except Exception as e:
         print(f"[error] 신호 생성 중 오류 발생 ({ticker}): {e}")
-
-    save_model(ticker, f"sgd", model, scaler)
 
 # 메인 함수
 def main():
