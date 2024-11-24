@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import SGDClassifier
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import GridSearchCV
 from joblib import dump, load
 from autobot_apikey import *
 from autobot_func import *
@@ -66,8 +67,23 @@ def train_or_update_model(ticker, model=None, scaler=None):
         print(f"[notify] 모델이나 스케일러가 없어서 새로 학습합니다. {ticker}")
         scaler = StandardScaler()
         features = scaler.fit_transform(features)  # scaler에 데이터를 학습시킨 후 변환
-        model = SGDClassifier(max_iter=1000, random_state=42)
-        model.fit(features, labels)
+
+        # 하이퍼파라미터 튜닝을 위한 GridSearchCV 설정
+        param_grid = {
+            'alpha': [0.0001, 0.001, 0.01, 0.1],
+            'max_iter': [1000, 2000],
+            'penalty': ['l2', 'l1'],
+            'learning_rate': ['constant', 'optimal', 'invscaling'],
+            'eta0': [0.001, 0.01, 0.1],  # eta0 값 추가
+            'class_weight': ['balanced']  # 불균형 클래스 처리
+        }
+
+        model = SGDClassifier(random_state=42)
+        grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, n_jobs=-1)
+        grid_search.fit(features, labels)
+
+        # 최적의 모델 파라미터로 학습된 모델 반환
+        model = grid_search.best_estimator_
         print(f"[success] {ticker} 모델 학습 완료")
     else:
         print(f"[notify] 기존 모델을 업데이트합니다. {ticker}")
