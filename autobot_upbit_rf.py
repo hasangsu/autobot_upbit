@@ -13,7 +13,8 @@ from autobot_func import *
 
 # coin & env
 #COIN = "KRW-XRP"
-COINS = ["KRW-BTC", "KRW-XRP", "KRW-ETH", "KRW-DOGE"]
+# COINS = ["KRW-BTC", "KRW-XRP", "KRW-ETH", "KRW-DOGE"]
+COINS = ["KRW-BTC"]
 INTERVAL = "minute15"
 BUY_AMOUNT = 5000
 FEE_RATE = 0.0005 * 2  # 수수료 비율 (한번의 거래 수수료 0.05% * 매수와 매도)
@@ -39,6 +40,7 @@ def get_ohlcv_data(ticker, interval=INTERVAL, count=200, period=0.1):
 
 # 학습 데이터 생성
 def create_training_data(data):
+    # 설명변수 추가
     data['ma15'] = calculate_ma(data, period=15)
     data['ma50'] = calculate_ma(data, period=50)
     data['rsi'] = calculate_rsi_series(data)
@@ -47,50 +49,60 @@ def create_training_data(data):
     data['upper_band'], data['lower_band'] = calculate_bollinger_bands_series(data)
     data['macd'], data['signal'] = calculate_macd(data)
 
-    target_return = (data['close'].shift(-1) - data['close']) / data['close'] - FEE_RATE
-    data['target'] = np.where(target_return > 0.002, 1,   # 상승(수익 > 0.2%) -> 매수
-                              np.where(target_return < -0.002, -1, 0))  # 하락(손실 > 0.2%) -> 매도
-
+    # 불필요 설명변수 제거
     data = data.dropna()
-    features = data[['ma15', 'ma50', 'rsi', 'volatility', 'volume_change_rate', 'upper_band', 'lower_band', 'macd', 'signal']].values
-    labels = data['target'].values
-    return features, labels
+    data_prep = remove_outlier(data)    
+    # boxplot_vis(data, "ssha")
+
+    # 목표변수 할당
+    target_return = (data_prep['close'].shift(-1) - data_prep['close']) / data_prep['close'] - FEE_RATE
+
+    # 목표 변수 계산 (길이 일치)
+    data_prep = data_prep.iloc[:-1]  # 마지막 행 제거 (shift(-1)로 NaN이 생긴 마지막 값 제외)
+    target_return = target_return.iloc[:-1]  # 동일하게 길이 조정
+
+    data_prep['target'] = np.where(target_return > 0.002, 1,   # 상승(수익 > 0.2%) -> 매수
+                                   np.where(target_return < -0.002, -1, 0))
+
+    # 결측치 제거
+    data_prep.dropna(axis=0, how='any', inplace=True)
+
+    x = data_prep[data_prep.columns.difference(['target'])]
+    y = data_prep['target']
+    return x, y
 
 # 학습 및 모델 생성
 def train_model(ticker):
     print(f"[notify] start learning {ticker} model")
     data = get_ohlcv_data(ticker, count=1000, period=1.5)
-    features, labels = create_training_data(data)
-    if features is None or len(features) == 0:
+    x, y = create_training_data(data)
+    if x is None or len(x) == 0:
         print(f"[error] {ticker} 특징 데이터 부족")
         return None, None
 
+    # 표준 스케일러(평균 0, 분산 1)
     scaler = StandardScaler()
-    features_scaled = scaler.fit_transform(features)
+    x_scaled = scaler.fit_transform(x)
 
-    # 하이퍼파라미터 그리드 정의 (RandomForestClassifier에 적합한 하이퍼파라미터)
-    param_grid = {
-        'n_estimators': [200, 300, 500],  # 트리의 수
-        'max_depth': [10, 20, 30, None],  # 트리의 최대 깊이
-        'min_samples_split': [2, 5, 10],  # 분할을 위한 최소 샘플 수
-        'min_samples_leaf': [1, 2, 4],    # 리프 노드의 최소 샘플 수
-        'max_features': ['auto', 'sqrt', 'log2'],  # 각 트리에서 사용할 특성의 수
-        'bootstrap': [True, False],  # 부트스트랩 샘플링 여부
-    }
+    x_train, x_test, y_train, y_test = train_test_split(x_scaled, y, test_size = 0.3, random_state = 123)
+    y_train.value_counts(normalize=True)
 
-    # GridSearchCV 객체 생성
-    grid_search = GridSearchCV(RandomForestClassifier(random_state=42), param_grid, cv=3, n_jobs=-1, verbose=1)
+    algorithm = RandomForestClassifier
+    algorithm_name = 'rfc'
 
-    # 모델 학습 및 하이퍼파라미터 튜닝
-    grid_search.fit(features_scaled, labels)
+    # 기본 보델 학습
+    modeling_uncustomized(algorithm, x_train, y_train, x_test, y_test)
+    
+    n_estimator = 30
+    n_depth = 6
+    n_split = 20
+    n_leaf = 2
 
-    # 최적 하이퍼파라미터와 성능 출력
-    print("최적 하이퍼파라미터: ", grid_search.best_params_)
-    print("최고 성능: ", grid_search.best_score_)
+    model = model_final(ticker, algorithm, algorithm_name, x.columns,
+            x_train, y_train, x_test, y_test,
+            n_estimator, n_depth, n_split, n_leaf)
 
-    # 최적 모델 반환
-    best_model = grid_search.best_estimator_
-    return best_model, scaler
+    return model, scaler
 
 # 매매 신호 생성 및 실거래 실행
 def generate_signals(model, scaler, ticker):

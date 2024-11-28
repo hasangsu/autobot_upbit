@@ -1,5 +1,9 @@
 import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, ConfusionMatrixDisplay
 import pandas as pd
+import matplotlib.pyplot as plt
+import math
 import requests
 import os
 from joblib import dump, load
@@ -138,3 +142,270 @@ def notify_slack(url, msg, title):
 
 def create_notification(trade, status, ticker, details):
     return f"[notify] {trade}, {status}, {ticker}, {details}"
+
+# 이상치 확인
+def boxplot_vis(data, target_name):
+    # 현재 스크립트 실행 경로에 figure 디렉토리 생성
+    current_dir = os.getcwd()
+    save_dir = os.path.join(current_dir, 'figure')
+    os.makedirs(save_dir, exist_ok=True)
+    
+    num_features = len(data.columns)  # 데이터의 열 개수
+    ncols = 2  # 한 행에 서브플롯 2개
+    nrows = math.ceil(num_features / ncols)  # 필요한 행 수 계산
+
+    plt.figure(figsize=(15, 5 * nrows))  # 그래프 크기 동적 설정
+    for col_idx in range(num_features):
+        plt.subplot(nrows, ncols, col_idx + 1)  # 유효한 서브플롯 범위 설정
+        # flierprops: 빨간색 다이아몬드 모양으로 아웃라이어 시각화
+        plt.boxplot(data[data.columns[col_idx]], flierprops=dict(markerfacecolor='r', marker='D'))
+        plt.title("Feature" + "(" + target_name + "): " + data.columns[col_idx], fontsize=10)
+
+    # 그래프 저장
+    plt.savefig(os.path.join(save_dir, 'boxplot_' + target_name + '.png'))
+    plt.show()
+
+# 이상치 제거
+def remove_outlier(data):
+    # 각 열에 대해 이상치를 제거하도록 수정
+    for column in data.columns:
+        q1 = data[column].quantile(0.25)  # 제 1사분위수
+        q3 = data[column].quantile(0.75)  # 제 3사분위수
+        iqr = q3 - q1  # IQR(Interquartile range) 계산
+        minimum = q1 - (iqr * 1.5)  # IQR 최솟값
+        maximum = q3 + (iqr * 1.5)  # IQR 최댓값
+        data = data[(data[column] >= minimum) & (data[column] <= maximum)]  # 해당 열에서 이상치 제거
+    return data
+
+# 히스토그램
+def histogram_vis(data):
+    # 현재 스크립트 실행 경로에 figure 디렉토리 생성
+    current_dir = os.getcwd()
+    save_dir = os.path.join(current_dir, 'figure')
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # 설명변수 선정
+    x = data[data.columns.difference(['target'])]
+
+    # 설명변수명 리스트
+    feature_name = x.columns
+
+    num_features = len(feature_name)  # 데이터의 열 개수
+    ncols = 2  # 한 행에 서브플롯 2개
+    nrows = math.ceil(num_features / ncols)  # 필요한 행 수 계산
+
+    plt.figure(figsize=(30, 30))
+
+    for col_idx in range(num_features):
+        plt.subplot(nrows, ncols, col_idx + 1)  # 유효한 서브플롯 범위 설정
+        feature = feature_name[col_idx]
+
+        # data histogram 시각화
+        plt.hist(data[data["target"] == 0][feature], alpha = 0.5)
+        plt.legend()
+
+        # 그래프 타이틀: feature name
+        plt.title(f"Feature: {feature}", fontsize=20)
+        
+    # 그래프 저장
+    plt.savefig(os.path.join(save_dir, 'relationshi.png'))
+    plt.show()
+
+def modeling_uncustomized(algorithm, x_train, y_train, x_test, y_test):
+    # 하이퍼파라미터 조정 없이 모델 학습
+    uncustomized = algorithm(random_state=1234)
+    uncustomized.fit(x_train, y_train)
+
+    # Train Data 설명력
+    train_score_before = uncustomized.score(x_train, y_train)
+    print(f"학습 데이터셋 정확도: {train_score_before}")
+
+    # Test Data 설명력
+    test_score_before = uncustomized.score(x_test, y_test)
+    print(f"테스트 데이터셋 정확도: {test_score_before}")
+    
+    return train_score_before, test_score_before
+
+def optimi_visualization(algorithm_name, x_values, train_score, test_score, xlabel, filename):
+    # 현재 스크립트 실행 경로에 figure 디렉토리 생성
+    current_dir = os.getcwd()
+    save_dir = os.path.join(current_dir, 'figure')
+    os.makedirs(save_dir, exist_ok=True)
+
+    # 하이퍼파라미터 조정에 따른 학습 데이터셋 기반 모델 성능 추이 시각화
+    plt.plot(x_values, train_score, linestyle = '-', label = 'train score')
+
+    # 하이퍼파라미터 조정에 따른 테스트 데이터셋 기반 모델 성능 추이 시각화
+    plt.plot(x_values, test_score, linestyle = '--', label = 'test score')
+    plt.ylabel('Accuracy(%)') # y축 라벨
+    plt.xlabel(xlabel) # x축 라벨
+    plt.legend() # 범례표시
+    plt.savefig(os.path.join(save_dir, f"{algorithm_name}_{filename}.png"))
+
+# 학습할 트리 모델 개수 선정
+def optimi_estimator(algorithm, algorithm_name, x_train, y_train, x_test, y_test, n_estimator_min, n_estimator_max):
+    train_score = []; test_score =[]
+    para_n_tree = [n_tree*5 for n_tree in range(n_estimator_min, n_estimator_max)]
+
+    for v_n_estimators in para_n_tree:
+        model = algorithm(n_estimators = v_n_estimators, random_state=1234)
+        model.fit(x_train, y_train)
+        train_score.append(model.score(x_train, y_train))
+        test_score.append(model.score(x_test, y_test))
+
+    # 트리 개수에 따른 모델 성능 저장
+    df_score_n = pd.DataFrame({'n_estimators': para_n_tree, 'TrainScore': train_score, 'TestScore': test_score})
+
+    # 트리 개수에 따른 모델 성능 추이 시각화 함수 호출
+    optimi_visualization(algorithm_name, para_n_tree, train_score, test_score, "The number of estimator", "n_estimator")
+
+    print(round(df_score_n, 4))
+
+# 최대 깊이 선정
+def optimi_maxdepth (algorithm, algorithm_name, x_train, y_train, x_test, y_test, depth_min, depth_max, n_estimator):
+    train_score = []; test_score = []
+    para_depth = [depth for depth in range(depth_min, depth_max)]
+
+    for v_max_depth in para_depth:
+        # 의사결정나무 모델의 경우 트리 개수를 따로 설정하지 않기 때문에 RFC, GBC와 분리하여 모델링
+        if algorithm == RandomForestClassifier:
+            model = algorithm(max_depth = v_max_depth,
+                              random_state=1234)
+        else:
+            model = algorithm(max_depth = v_max_depth,
+                              n_estimators = n_estimator,
+                              random_state=1234)
+        
+        model.fit(x_train, y_train)
+
+        train_score.append(model.score(x_train, y_train))
+        test_score.append(model.score(x_test, y_test))
+
+    # 최대 깊이에 따른 모델 성능 저장
+    df_score_n = pd.DataFrame({'depth': para_depth, 'TrainScore': train_score, 'TestScore': test_score, 'diff': [train - test for train, test in zip(train_score, test_score)]})
+
+    # 최대 깊이에 따른 모델 성능 추이 시각화 함수 호출
+    optimi_visualization(algorithm_name, para_depth, train_score, test_score, "The number of depth", "n_depth")
+
+    print(round(df_score_n, 4))
+
+# 분리 노드의 최소 자료 수 선정
+def optimi_minsplit (algorithm, algorithm_name, x_train, y_train, x_test, y_test, n_split_min, n_split_max, n_estimator, n_depth):
+    train_score = []; test_score = []
+    para_split = [n_split*2 for n_split in range(n_split_min, n_split_max)]
+    for v_min_samples_split in para_split:
+        # 의사결정나무 모델의 경우 트리 개수를 따로 설정하지 않기 때문에 RFC, GBC와 분리하여 모델링
+        if algorithm == RandomForestClassifier:
+            model = algorithm(min_samples_split = v_min_samples_split,
+                              max_depth = n_depth,
+                              random_state = 1234)
+        else:
+            model = algorithm(min_samples_split = v_min_samples_split,
+                              n_estimators = n_estimator,
+                              max_depth = n_depth,
+                              random_state = 1234)
+        model.fit(x_train, y_train)
+
+        train_score.append(model.score(x_train, y_train))
+        test_score.append(model.score(x_test, y_test))
+
+    # 분리 노드의 최소 자료 수에 따른 모델 성능 저장
+    df_score_n = pd.DataFrame({'min_samples_split': para_split, 'TrainScore': train_score, 'TestScore': test_score, 'diff': [train - test for train, test in zip(train_score, test_score)]})
+
+    # 분리 노드의 최소 자료 수에 따른 모델 성능 추이 시각화 함수 호출
+    optimi_visualization(algorithm_name, para_split, train_score, test_score, "The minimum number of samples required to split an internal node", "min_samples_split")
+
+    print(round(df_score_n, 4))
+
+# 잎사귀 노드의 최소 자료 수 선정
+def optimi_minleaf(algorithm, algorithm_name, x_train, y_train, x_test, y_test, n_leaf_min, n_leaf_max, n_estimator, n_depth, n_split):
+    train_score = []; test_score = []
+    para_leaf = [n_leaf*2 for n_leaf in range(n_leaf_min, n_leaf_max)]
+
+    for v_min_samples_leaf in para_leaf:
+        # 의사결정나무 모델의 경우 트리 개수를 따로 설정하지 않기 때문에 RFC, GBC와 분리하여 모델링
+        if algorithm == RandomForestClassifier:
+            model = algorithm(min_samples_leaf = v_min_samples_leaf,
+                                        max_depth = n_depth,
+                                        min_samples_split = n_split,
+                                        random_state=1234)
+        else:
+            model = algorithm(min_samples_leaf = v_min_samples_leaf,
+                                n_estimators = n_estimator,
+                                max_depth = n_depth,
+                                min_samples_split = n_split,
+                                random_state=1234)
+            
+        model.fit(x_train, y_train)
+
+        train_score.append(model.score(x_train, y_train))
+        test_score.append(model.score(x_test, y_test))
+
+    # 잎사귀 노드의 최소 자료 수에 따른 모델 성능 저장
+    df_score_n = pd.DataFrame({'min_samples_leaf': para_leaf, 'TrainScore': train_score, 'TestScore': test_score, 'diff': [train - test for train, test in zip(train_score, test_score)]})
+
+    # 잎사귀 노드의 최소 자료 수에 따른 모델 성능 추이 시각화 함수 호출
+    optimi_visualization(algorithm_name, para_leaf, train_score, test_score, "The minimum number of samples required to be at a leaf node", "min_samples_leaf")
+
+    print(round(df_score_n, 4))
+
+# 최종 모델 학습
+def model_final(ticker, algorithm, algorithm_name, feature_name, x_train, y_train, x_test, y_test, n_estimator, n_depth, n_split, n_leaf):
+    # 현재 스크립트 실행 경로에 figure 디렉토리 생성
+    current_dir = os.getcwd()
+    save_dir = os.path.join(current_dir, 'figure')
+    os.makedirs(save_dir, exist_ok=True)
+
+    # 의사결정나무 모델의 경우 트리 개수를 따로 설정하지 않기 때문에 RFC, GBC와 분리하여 모델링
+    if algorithm == RandomForestClassifier:
+        model = algorithm(random_state=1234, 
+                          min_samples_leaf = n_leaf,
+                          min_samples_split = n_split, 
+                          max_depth = n_depth)
+    else:
+        model = algorithm(random_state = 1234, 
+                          n_estimators = n_estimator, 
+                          min_samples_leaf = n_leaf,
+                          min_samples_split = n_split, 
+                          max_depth = n_depth)
+    # 모델 학습
+    model.fit(x_train, y_train)
+    
+    # 최종 모델의 성능 평가
+    train_acc = model.score(x_train, y_train)
+    test_acc = model.score(x_test, y_test)
+    y_pred = model.predict(x_test)
+    
+    # 정확도, 정밀도, 재현율, F1 점수 계산 시 average 파라미터 수정
+    print(f"Accuracy: {accuracy_score(y_test, y_pred):.3f}")  # 정확도
+    print(f"Precision: {precision_score(y_test, y_pred, average='macro'):.3f}")  # 정밀도 (다중 클래스에서는 macro, micro, weighted 중 선택)
+    print(f"Recall: {recall_score(y_test, y_pred, average='macro'):.3f}")  # 재현율
+    print(f"F1-score: {f1_score(y_test, y_pred, average='macro'):.3f}")  # F1 스코어
+    
+    # 혼동행렬 시각화
+    plt.figure(figsize =(30, 30))
+    disp = ConfusionMatrixDisplay.from_estimator(model, x_test, y_test)
+    disp.plot()
+    
+    # 변수 중요도 산출
+    dt_importance = pd.DataFrame()
+    dt_importance['Feature'] = feature_name # 설명변수 이름
+    dt_importance['Importance'] = model.feature_importances_ # 설명변수 중요도 산출
+
+    # 변수 중요도 내림차순 정렬
+    dt_importance.sort_values("Importance", ascending = False, inplace = True)
+    print(dt_importance.round(3))
+
+    # 변수 중요도 오름차순 정렬
+    dt_importance.sort_values("Importance", ascending = True, inplace = True)
+
+    # 변수 중요도 시각화
+    coordinates = range(len(dt_importance)) # 설명변수 개수만큼 bar 시각화
+
+    plt.barh(y = coordinates, width = dt_importance["Importance"])
+    plt.yticks(coordinates, dt_importance["Feature"]) # y축 눈금별 설명변수 이름 기입
+    plt.xlabel("Feature Importance") # x축 이름
+    plt.ylabel("Features") # y축 이름
+    plt.savefig(os.path.join(save_dir, '_feature_importance.png'))
+
+    return model
