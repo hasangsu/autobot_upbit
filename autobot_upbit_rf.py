@@ -13,8 +13,7 @@ from autobot_func import *
 
 # coin & env
 #COIN = "KRW-XRP"
-# COINS = ["KRW-BTC", "KRW-XRP", "KRW-ETH", "KRW-DOGE"]
-COINS = ["KRW-BTC"]
+COINS = ["KRW-BTC", "KRW-XRP", "KRW-ETH", "KRW-DOGE"]
 INTERVAL = "minute15"
 BUY_AMOUNT = 5000
 FEE_RATE = 0.0005 * 2  # 수수료 비율 (한번의 거래 수수료 0.05% * 매수와 매도)
