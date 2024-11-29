@@ -6,17 +6,27 @@ import matplotlib.pyplot as plt
 import math
 import requests
 import os
+import time
 from joblib import dump, load
+from datetime import datetime, timedelta
 
 # 모델과 스케일러 저장 및 로드
-def save_model(ticker, type, extension, model, scaler):
+def save_model(ticker, type, extension, model, scaler, save_path = "."):
     print(f"[notify] save model {ticker}")
-    dump(model, f"{ticker}_{type}_model.{extension}")
-    dump(scaler, f"{ticker}_{type}_scaler.{extension}")
 
-def load_model(ticker, type, extension):
-    model_path = f"{ticker}_{type}_model.{extension}"
-    scaler_path = f"{ticker}_{type}_scaler.{extension}"
+    # 모델과 스케일러 파일 경로 생성
+    os.makedirs(save_path, exist_ok=True)
+    model_path = os.path.join(save_path, f"{ticker}_{type}_model.{extension}")
+    scaler_path = os.path.join(save_path, f"{ticker}_{type}_scaler.{extension}")
+
+    dump(model, model_path)
+    dump(scaler, scaler_path)
+
+def load_model(ticker, type, extension, load_path="."):
+    # 모델과 스케일러 파일 경로 생성
+    model_path = os.path.join(load_path, f"{ticker}_{type}_model.{extension}")
+    scaler_path = os.path.join(load_path, f"{ticker}_{type}_scaler.{extension}")
+
     if os.path.exists(model_path) and os.path.exists(scaler_path):
         print(f"[notify] success load {ticker} model")
         model = load(model_path)
@@ -25,6 +35,24 @@ def load_model(ticker, type, extension):
     else:
         print(f"[notify] error load {ticker} model -> new model")
         return None, None
+    
+# 특정기간보다 오래된 모델 파일 제거
+def remove_old_model(ticker, type, folder_path, days_threshold=7):
+    now = time.time()
+    cutoff = now - days_threshold * 86400  # 7일을 초로 변환
+
+    for filename in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, filename)
+
+        # save_model에서 생성한 파일만 삭제 (패턴 기반 필터링)
+        if (
+            os.path.isfile(file_path)
+            and filename.startswith(f"{ticker}_{type}_")
+        ):
+            file_mtime = os.path.getmtime(file_path)  # 파일의 마지막 수정 시간 가져오기
+            if file_mtime < cutoff:
+                os.remove(file_path)
+                print(f"[notify] Removed old model file: {file_path}")
 
 # rsi series
 def calculate_rsi_series(data, period=14, target=-1):
