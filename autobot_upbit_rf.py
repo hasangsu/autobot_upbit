@@ -17,6 +17,7 @@ COINS = ["KRW-BTC", "KRW-XRP", "KRW-ETH", "KRW-DOGE"]
 INTERVAL = "minute15"
 BUY_AMOUNT = 5000
 FEE_RATE = 0.0005 * 2  # 수수료 비율 (한번의 거래 수수료 0.05% * 매수와 매도)
+TRAILING_STOP_PERCENT = 0.02
 
 # upbit instance
 upbit = pyupbit.Upbit(ACCESS_KEY, SECRET_KEY)
@@ -114,34 +115,56 @@ def generate_signals(model, scaler, ticker):
     recent_signals = predictions[-5:]
 
     current_price = pyupbit.get_current_price(ticker)
+
+    # 트레일링 스탑 로드
+    buy_price, trail_stop_price = load_trailing_stop(ticker, ".")
     
     trade_message = f"trade_bot({signal}) has been executed\n"
     if signal == 1:
         print(f"{ticker}: 매수 신호 발생 - 현재가 {current_price}")
+
         # 매수
         krw_balance = upbit.get_balance("KRW")
         if krw_balance > BUY_AMOUNT:
-            buy_result = upbit.buy_market_order(ticker, BUY_AMOUNT)
+            if buy_price is None or trail_stop_price is None:
+                buy_price = current_price
+                trail_stop_price = current_price * (1 - TRAILING_STOP_PERCENT)
+                save_trailing_stop(ticker, buy_price, trail_stop_price, ".")
+
+            upbit.buy_market_order(ticker, BUY_AMOUNT)
             trade_message += create_notification("buy", "success", ticker, BUY_AMOUNT)
+
+            if buy_price is not None and trail_stop_price is not None:
+                # 트레일링 스탑 갱신 (현재가 상승 시 상향 조정)
+                new_trail_stop_price = current_price * (1 - TRAILING_STOP_PERCENT)
+                if current_price > buy_price and new_trail_stop_price > trail_stop_price:
+                    trail_stop_price = new_trail_stop_price
+                    save_trailing_stop(ticker, buy_price, trail_stop_price, ".")
         else:
             trade_message += create_notification("buy", "fail", ticker, f"don't have the cash to buy") 
 
     # elif signal == -1:
     elif (recent_signals == -1).sum() >= 5:
         print(f"{ticker}: 매도 신호 발생 - 현재가 {current_price}")
-        # 매도
-        coin_balance = upbit.get_balance(ticker.split('-')[1])
-        if coin_balance > 0:
-            sell_amount = coin_balance * 0.25
-            sell_value_in_krw = sell_amount * current_price
-            if sell_value_in_krw < 5000:
-                sell_result = upbit.sell_market_order(ticker, coin_balance)
-                trade_message += create_notification("sell", "success", ticker, f"remain {coin_balance}") 
+
+        # 매도신호이면서, 트레일링 스탑 진행
+        if buy_price is not None and trail_stop_price is not None and current_price < trail_stop_price:
+            save_trailing_stop(ticker, None, None, ".")
+
+            # 매도
+            coin_balance = upbit.get_balance(ticker.split('-')[1])
+            if coin_balance > 0:
+                sell_amount = coin_balance * 0.25
+                sell_value_in_krw = sell_amount * current_price
+
+                if sell_value_in_krw < 5000:
+                    upbit.sell_market_order(ticker, coin_balance)
+                    trade_message += create_notification("sell", "success", ticker, f"remain {coin_balance}") 
+                else:
+                    upbit.sell_market_order(ticker, sell_amount)
+                    trade_message += create_notification("sell", "success", ticker, f"remain {coin_balance}") 
             else:
-                sell_result = upbit.sell_market_order(ticker, sell_amount)
-                trade_message += create_notification("sell", "success", ticker, f"remain {coin_balance}") 
-        else:
-            trade_message += create_notification("sell", "fail", ticker, f"don't have {ticker}") 
+                trade_message += create_notification("sell", "fail", ticker, f"don't have {ticker}") 
     else:
         # 홀드
         print(f"{ticker}: 홀드 신호 발생 - 현재가 {current_price}")

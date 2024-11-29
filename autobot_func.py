@@ -6,14 +6,13 @@ import matplotlib.pyplot as plt
 import math
 import requests
 import os
+import json
 import time
 from joblib import dump, load
 from datetime import datetime, timedelta
 
 # 모델과 스케일러 저장 및 로드
 def save_model(ticker, type, extension, model, scaler, save_path = "."):
-    print(f"[notify] save model {ticker}")
-
     # 모델과 스케일러 파일 경로 생성
     os.makedirs(save_path, exist_ok=True)
     model_path = os.path.join(save_path, f"{ticker}_{type}_model.{extension}")
@@ -21,6 +20,8 @@ def save_model(ticker, type, extension, model, scaler, save_path = "."):
 
     dump(model, model_path)
     dump(scaler, scaler_path)
+
+    print(f"[notify] save model {ticker}")
 
 def load_model(ticker, type, extension, load_path="."):
     # 모델과 스케일러 파일 경로 생성
@@ -53,6 +54,39 @@ def remove_old_model(ticker, type, folder_path, days_threshold=7):
             if file_mtime < cutoff:
                 os.remove(file_path)
                 print(f"[notify] Removed old model file: {file_path}")
+
+# 트레일링 스탑 저장
+def save_trailing_stop(ticker, buy_price, trail_stop_price, save_path="."):
+    # 트레일링 스탑 파일 경로 생성
+    os.makedirs(save_path, exist_ok=True)
+    trailing_stop_path = os.path.join(save_path, f"{ticker}_trailingstop.json")
+    
+    # 상태 저장
+    trail_stop_data = {
+        'buy_price': buy_price,
+        'trail_stop_price': trail_stop_price
+    }
+    
+    # JSON 파일로 저장
+    with open(trailing_stop_path, 'w') as f:
+        json.dump(trail_stop_data, f)
+
+    print(f"[notify] save trailing stop {ticker}")
+
+# 트레일링 스탑 로드
+def load_trailing_stop(ticker, load_path="."):
+    # 트레일링 스탑 파일 경로 생성
+    trailing_stop_path = os.path.join(load_path, f"{ticker}_trailingstop.json")
+    
+    if os.path.exists(trailing_stop_path):
+        with open(trailing_stop_path, 'r') as f:
+            trail_stop_data = json.load(f)
+
+        print(f"{ticker} trailing load: {trailing_stop_path}")
+        return trail_stop_data['buy_price'], trail_stop_data['trail_stop_price']
+    else:
+        print(f"{ticker} fail trailing load: {trailing_stop_path}")
+        return None, None
 
 # rsi series
 def calculate_rsi_series(data, period=14, target=-1):
