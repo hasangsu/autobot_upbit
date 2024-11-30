@@ -112,14 +112,13 @@ def generate_signals(model, scaler, ticker):
 
     predictions = model.predict(features)
     signal = predictions[-1]
-    recent_signals = predictions[-5:]
 
     current_price = pyupbit.get_current_price(ticker)
 
     # 트레일링 스탑 로드
     buy_price, trail_stop_price = load_trailing_stop(ticker, ".")
     
-    trade_message = f"trade_bot({signal}) has been executed\n"
+    trade_message = f"trade_bot({ticker}, {signal}) has been executed\n"
     if signal == 1:
         print(f"{ticker}: 매수 신호 발생 - 현재가 {current_price}")
 
@@ -143,8 +142,8 @@ def generate_signals(model, scaler, ticker):
         else:
             trade_message += create_notification("buy", "fail", ticker, f"don't have the cash to buy") 
 
-    # elif signal == -1:
-    elif (recent_signals == -1).sum() >= 5:
+    elif signal == -1:
+    # elif (recent_signals == -1).sum() >= 5:
         print(f"{ticker}: 매도 신호 발생 - 현재가 {current_price}")
 
         # 매도신호이면서, 트레일링 스탑 진행
