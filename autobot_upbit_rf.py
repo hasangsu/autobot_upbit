@@ -121,8 +121,8 @@ def generate_signals(model, scaler, ticker):
     # 트레일링 스탑 갱신 (현재가 상승 시 상향 조정)
     if buy_price is not None and trail_stop_price is not None:
         new_trail_stop_price = current_price * (1 - TRAILING_STOP_PERCENT)
-        if current_price > buy_price and new_trail_stop_price > trail_stop_price:
-            trail_stop_price = new_trail_stop_price
+        if current_price > trail_stop_price:  # trail_stop_price 기준 상승 확인
+            trail_stop_price = max(trail_stop_price, new_trail_stop_price)
             save_trailing_stop(ticker, buy_price, trail_stop_price, ".")
     
     trade_message = f"trade_bot({ticker}, {signal}) has been executed\n"
