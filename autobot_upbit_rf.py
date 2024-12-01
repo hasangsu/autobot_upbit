@@ -117,6 +117,13 @@ def generate_signals(model, scaler, ticker):
 
     # 트레일링 스탑 로드
     buy_price, trail_stop_price = load_trailing_stop(ticker, ".")
+
+    # 트레일링 스탑 갱신 (현재가 상승 시 상향 조정)
+    if buy_price is not None and trail_stop_price is not None:
+        new_trail_stop_price = current_price * (1 - TRAILING_STOP_PERCENT)
+        if current_price > buy_price and new_trail_stop_price > trail_stop_price:
+            trail_stop_price = new_trail_stop_price
+            save_trailing_stop(ticker, buy_price, trail_stop_price, ".")
     
     trade_message = f"trade_bot({ticker}, {signal}) has been executed\n"
     if signal == 1:
@@ -133,12 +140,6 @@ def generate_signals(model, scaler, ticker):
             upbit.buy_market_order(ticker, BUY_AMOUNT)
             trade_message += create_notification("buy", "success", ticker, BUY_AMOUNT)
 
-            if buy_price is not None and trail_stop_price is not None:
-                # 트레일링 스탑 갱신 (현재가 상승 시 상향 조정)
-                new_trail_stop_price = current_price * (1 - TRAILING_STOP_PERCENT)
-                if current_price > buy_price and new_trail_stop_price > trail_stop_price:
-                    trail_stop_price = new_trail_stop_price
-                    save_trailing_stop(ticker, buy_price, trail_stop_price, ".")
         else:
             trade_message += create_notification("buy", "fail", ticker, f"don't have the cash to buy") 
 
