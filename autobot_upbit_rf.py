@@ -149,7 +149,6 @@ def generate_signals(model, scaler, ticker):
 
         # 매도신호이면서, 트레일링 스탑 진행
         if buy_price is not None and trail_stop_price is not None and current_price < trail_stop_price:
-            save_trailing_stop(ticker, None, None, ".")
 
             # 매도
             coin_balance = upbit.get_balance(ticker.split('-')[1])
@@ -158,9 +157,13 @@ def generate_signals(model, scaler, ticker):
                 sell_value_in_krw = sell_amount * current_price
 
                 if sell_value_in_krw < 5000:
+                    save_trailing_stop(ticker, None, None, ".")
+
                     upbit.sell_market_order(ticker, coin_balance)
                     trade_message += create_notification("sell", "success", ticker, f"remain {coin_balance}") 
                 else:
+                    save_trailing_stop(ticker, buy_price, trail_stop_price, ".")
+
                     upbit.sell_market_order(ticker, sell_amount)
                     trade_message += create_notification("sell", "success", ticker, f"remain {coin_balance}") 
             else:
