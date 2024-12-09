@@ -12,9 +12,9 @@ from autobot_apikey import *
 from autobot_func import *
 
 # coin & env
-#COIN = "KRW-XRP"
-COINS = ["KRW-BTC", "KRW-XRP", "KRW-ETH", "KRW-DOGE"]
+COINS = ["KRW-BTC", "KRW-XRP", "KRW-XLM", "KRW-ETH", "KRW-DOGE"]
 INTERVAL = "minute15"
+MINIMUM_TRADE_AMOUNT = 5000
 BUY_AMOUNT = 5000
 FEE_RATE = 0.0005 * 2  # 수수료 비율 (한번의 거래 수수료 0.05% * 매수와 매도)
 TRAILING_STOP_PERCENT = 0.02
@@ -110,8 +110,10 @@ def generate_signals(model, scaler, ticker):
     features, _ = create_training_data(data)
     features = scaler.transform(features)
 
+    probabilities = model.predict_proba(features)
     predictions = model.predict(features)
     signal = predictions[-1]
+    signal_strength = probabilities[-1]
 
     current_price = pyupbit.get_current_price(ticker)
 
@@ -127,24 +129,40 @@ def generate_signals(model, scaler, ticker):
     
     trade_message = f"trade_bot({ticker}, {signal}) has been executed\n"
     if signal == 1:
+        # 매수 시작
         print(f"{ticker}: 매수 신호 발생 - 현재가 {current_price}")
 
-        # 매수
+        # KRW 잔고
         krw_balance = upbit.get_balance("KRW")
-        if krw_balance > BUY_AMOUNT:
+
+        # 매수 금액 계산 (매수 확률 기반)
+        adjusted_buy_amount = BUY_AMOUNT * (1 + signal_strength[2])  # 매수 확률이 높을수록 금액 증가
+        adjusted_buy_amount = min(adjusted_buy_amount, krw_balance)  # 잔고 초과 방지
+
+        # 유동적 거래 금액이 최소 거래 금액보다 작으면 최소 거래 금액으로 설정
+        adjusted_buy_amount = max(adjusted_buy_amount, MINIMUM_TRADE_AMOUNT)
+
+        isCanBuy = krw_balance >= adjusted_buy_amount
+        
+        # 현금 잔고가 유동적 거래 금액보다 작지만 최소 금액보다는 큰 경우 처리
+        if not can_buy and krw_balance >= MINIMUM_TRADE_AMOUNT:
+            # 잔고가 유동적 거래금액보다 작지만, 최소 거래 금액 이상인 경우 최소 거래금액으로 매수
+            adjusted_buy_amount = MINIMUM_TRADE_AMOUNT
+            can_buy = True
+
+        if isCanBuy:
             if buy_price is None or trail_stop_price is None:
                 buy_price = current_price
                 trail_stop_price = current_price * (1 - TRAILING_STOP_PERCENT)
                 save_trailing_stop(ticker, buy_price, trail_stop_price, ".")
 
-            upbit.buy_market_order(ticker, BUY_AMOUNT)
-            trade_message += create_notification("buy", "success", ticker, BUY_AMOUNT)
+            upbit.buy_market_order(ticker, adjusted_buy_amount)
+            trade_message += create_notification("buy", "success", ticker, adjusted_buy_amount)
 
         else:
             trade_message += create_notification("buy", "fail", ticker, f"don't have the cash to buy") 
 
     elif signal == -1:
-    # elif (recent_signals == -1).sum() >= 5:
         print(f"{ticker}: 매도 신호 발생 - 현재가 {current_price}")
 
         # 매도신호이면서, 트레일링 스탑 진행
