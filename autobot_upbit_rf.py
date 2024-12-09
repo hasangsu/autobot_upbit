@@ -12,7 +12,8 @@ from autobot_apikey import *
 from autobot_func import *
 
 # coin & env
-COINS = ["KRW-BTC", "KRW-XRP", "KRW-XLM", "KRW-ETH", "KRW-DOGE"]
+# COINS = ["KRW-BTC", "KRW-XRP", "KRW-XLM", "KRW-ETH", "KRW-DOGE"]
+COINS = ["KRW-XRP"]
 INTERVAL = "minute15"
 MINIMUM_TRADE_AMOUNT = 5000
 BUY_AMOUNT = 5000
@@ -178,12 +179,12 @@ def generate_signals(model, scaler, ticker):
                     save_trailing_stop(ticker, None, None, ".")
 
                     upbit.sell_market_order(ticker, coin_balance)
-                    trade_message += create_notification("sell", "success", ticker, f"remain {coin_balance}") 
+                    trade_message += create_notification("sell", "success", ticker, sell_value_in_krw) 
                 else:
                     save_trailing_stop(ticker, buy_price, trail_stop_price, ".")
 
                     upbit.sell_market_order(ticker, sell_amount)
-                    trade_message += create_notification("sell", "success", ticker, f"remain {coin_balance}") 
+                    trade_message += create_notification("sell", "success", ticker, sell_value_in_krw) 
             else:
                 trade_message += create_notification("sell", "fail", ticker, f"don't have {ticker}") 
     else:
