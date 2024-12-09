@@ -12,8 +12,7 @@ from autobot_apikey import *
 from autobot_func import *
 
 # coin & env
-# COINS = ["KRW-BTC", "KRW-XRP", "KRW-XLM", "KRW-ETH", "KRW-DOGE"]
-COINS = ["KRW-XRP"]
+COINS = ["KRW-BTC", "KRW-XRP", "KRW-XLM", "KRW-ETH", "KRW-DOGE"]
 INTERVAL = "minute15"
 MINIMUM_TRADE_AMOUNT = 5000
 BUY_AMOUNT = 5000
