@@ -145,10 +145,10 @@ def generate_signals(model, scaler, ticker):
         isCanBuy = krw_balance >= adjusted_buy_amount
         
         # 현금 잔고가 유동적 거래 금액보다 작지만 최소 금액보다는 큰 경우 처리
-        if not can_buy and krw_balance >= MINIMUM_TRADE_AMOUNT:
+        if not isCanBuy and krw_balance >= MINIMUM_TRADE_AMOUNT:
             # 잔고가 유동적 거래금액보다 작지만, 최소 거래 금액 이상인 경우 최소 거래금액으로 매수
             adjusted_buy_amount = MINIMUM_TRADE_AMOUNT
-            can_buy = True
+            isCanBuy = True
 
         if isCanBuy:
             if buy_price is None or trail_stop_price is None:
