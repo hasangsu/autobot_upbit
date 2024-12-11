@@ -112,7 +112,7 @@ def train_model(ticker):
 
 # 매매 신호 생성 및 실거래 실행
 def generate_signals(model, scaler, ticker):
-    data = get_ohlcv_data(ticker, count=100, period=0.1)
+    data = get_ohlcv_data(ticker, interval=INTERVAL5, count=100, period=0.1)
     features, _ = create_training_data(data)
     features = scaler.transform(features)
 
