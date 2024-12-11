@@ -212,7 +212,6 @@ def process_ticker(ticker):
         save_model(ticker, f"rf", f"pkl", model, scaler)
     
     try:
-        return
         generate_signals(model, scaler, ticker)
     except Exception as e:
         print(f"[error] 신호 생성 중 오류 발생 ({ticker}): {e}")
