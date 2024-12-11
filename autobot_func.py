@@ -306,26 +306,55 @@ def optimi_visualization(algorithm_name, x_values, train_score, test_score, xlab
 
 # 학습할 트리 모델 개수 선정
 def optimi_estimator(algorithm, algorithm_name, x_train, y_train, x_test, y_test, n_estimator_min, n_estimator_max):
-    train_score = []; test_score =[]
+    train_score = []
+    test_score =[]
     para_n_tree = [n_tree*5 for n_tree in range(n_estimator_min, n_estimator_max)]
 
     for v_n_estimators in para_n_tree:
         model = algorithm(n_estimators = v_n_estimators, random_state=1234)
         model.fit(x_train, y_train)
-        train_score.append(model.score(x_train, y_train))
-        test_score.append(model.score(x_test, y_test))
+        
+        train_accuracy = model.score(x_train, y_train)  # 훈련 세트 정확도
+        test_accuracy = model.score(x_test, y_test)    # 테스트 세트 정확도
+
+        train_score.append(train_accuracy)
+        test_score.append(test_accuracy)
 
     # 트리 개수에 따른 모델 성능 저장
-    df_score_n = pd.DataFrame({'n_estimators': para_n_tree, 'TrainScore': train_score, 'TestScore': test_score})
+    df_score_n = pd.DataFrame({
+        'n_estimators': para_n_tree, 
+        'TrainScore': train_score, 
+        'TestScore': test_score,
+        'diff': [train - test for train, test in zip(train_score, test_score)]  # 학습-테스트 정확도 차이
+        })
+    
+    # diff가 일정 범위 이내로 작은 값들만 필터링 (여기서는 0.51 이하로 필터링)
+    filtered_df = df_score_n[df_score_n['diff'] <= 0.51]
+
+    # filtered_df가 빈 데이터프레임인 경우
+    if filtered_df.empty:
+        # 빈 데이터프레임일 경우 TestScore가 가장 높은 값을 선택
+        optimal_row = df_score_n.loc[df_score_n['TestScore'].idxmax()]
+    else:
+        # accuracy_diff가 작은 값들 중에서 TestScore가 가장 높은 값의 n_estimators 선택
+        optimal_row = filtered_df.loc[filtered_df['TestScore'].idxmax()]
+
+    # 최적의 n_estimators 선택 (가능하면 트리 개수가 많고 정확도 차이가 작은 모델을 선택)
+    # 여기서 추가적으로 트리 개수가 많은 순으로 우선 고려
+    optimal_n_estimators = int(optimal_row['n_estimators'])
 
     # 트리 개수에 따른 모델 성능 추이 시각화 함수 호출
     optimi_visualization(algorithm_name, para_n_tree, train_score, test_score, "The number of estimator", "n_estimator")
 
     print(round(df_score_n, 4))
+    print(f"Optimal n_estimators: {optimal_n_estimators}")
+    
+    return optimal_n_estimators
 
 # 최대 깊이 선정
 def optimi_maxdepth (algorithm, algorithm_name, x_train, y_train, x_test, y_test, depth_min, depth_max, n_estimator):
-    train_score = []; test_score = []
+    train_score = []
+    test_score = []
     para_depth = [depth for depth in range(depth_min, depth_max)]
 
     for v_max_depth in para_depth:
@@ -340,21 +369,40 @@ def optimi_maxdepth (algorithm, algorithm_name, x_train, y_train, x_test, y_test
         
         model.fit(x_train, y_train)
 
-        train_score.append(model.score(x_train, y_train))
-        test_score.append(model.score(x_test, y_test))
+        train_accuracy = model.score(x_train, y_train)  # 훈련 세트 정확도
+        test_accuracy = model.score(x_test, y_test)    # 테스트 세트 정확도
+
+        train_score.append(train_accuracy)
+        test_score.append(test_accuracy)
 
     # 최대 깊이에 따른 모델 성능 저장
-    df_score_n = pd.DataFrame({'depth': para_depth, 'TrainScore': train_score, 'TestScore': test_score, 'diff': [train - test for train, test in zip(train_score, test_score)]})
+    df_score_n = pd.DataFrame({
+        'depth': para_depth, 
+        'TrainScore': train_score, 
+        'TestScore': test_score,
+        'diff': [train - test for train, test in zip(train_score, test_score)]  # 학습-테스트 정확도 차이
+        })
+    
+    # diff가 0에 가장 가까운 값을 찾아 선택
+    optimal_row = df_score_n.loc[df_score_n['diff'].abs().idxmin()]
+
+    # 최적의 max_depth 반환
+    optimal_max_depth = int(optimal_row['depth'])
 
     # 최대 깊이에 따른 모델 성능 추이 시각화 함수 호출
     optimi_visualization(algorithm_name, para_depth, train_score, test_score, "The number of depth", "n_depth")
 
     print(round(df_score_n, 4))
+    print(f"Optimal max_depth: {optimal_max_depth}")
+
+    return optimal_max_depth
 
 # 분리 노드의 최소 자료 수 선정
 def optimi_minsplit (algorithm, algorithm_name, x_train, y_train, x_test, y_test, n_split_min, n_split_max, n_estimator, n_depth):
-    train_score = []; test_score = []
+    train_score = []
+    test_score = []
     para_split = [n_split*2 for n_split in range(n_split_min, n_split_max)]
+
     for v_min_samples_split in para_split:
         # 의사결정나무 모델의 경우 트리 개수를 따로 설정하지 않기 때문에 RFC, GBC와 분리하여 모델링
         if algorithm == RandomForestClassifier:
@@ -368,20 +416,42 @@ def optimi_minsplit (algorithm, algorithm_name, x_train, y_train, x_test, y_test
                               random_state = 1234)
         model.fit(x_train, y_train)
 
-        train_score.append(model.score(x_train, y_train))
-        test_score.append(model.score(x_test, y_test))
+        train_accuracy = model.score(x_train, y_train)  # 훈련 세트 정확도
+        test_accuracy = model.score(x_test, y_test)    # 테스트 세트 정확도
+
+        train_score.append(train_accuracy)
+        test_score.append(test_accuracy)
 
     # 분리 노드의 최소 자료 수에 따른 모델 성능 저장
-    df_score_n = pd.DataFrame({'min_samples_split': para_split, 'TrainScore': train_score, 'TestScore': test_score, 'diff': [train - test for train, test in zip(train_score, test_score)]})
+    df_score_n = pd.DataFrame({
+        'min_samples_split': para_split, 
+        'TrainScore': train_score, 
+        'TestScore': test_score, 
+        'diff': [train - test for train, test in zip(train_score, test_score)]  # 학습-테스트 정확도 차이
+        })
+    
+    # diff가 가장 작은 값이 아닌, diff가 작은 값들 중에서 TestScore가 가장 높은 값을 선택
+    min_diff = df_score_n['diff'].min()  # 가장 작은 diff 찾기
+    filtered_df = df_score_n[df_score_n['diff'] == min_diff]  # 가장 작은 diff 값만 남기기
+
+    # 가장 작은 diff 값들 중에서 TestScore가 가장 높은 값을 선택
+    optimal_row = filtered_df.loc[filtered_df['TestScore'].idxmax()]
+
+    # 최적의 min_samples_split 반환
+    optimal_min_samples_split = int(optimal_row['min_samples_split'])
 
     # 분리 노드의 최소 자료 수에 따른 모델 성능 추이 시각화 함수 호출
     optimi_visualization(algorithm_name, para_split, train_score, test_score, "The minimum number of samples required to split an internal node", "min_samples_split")
 
     print(round(df_score_n, 4))
+    print(f"Optimal min_samples_split: {optimal_min_samples_split}")
+    
+    return optimal_min_samples_split
 
 # 잎사귀 노드의 최소 자료 수 선정
 def optimi_minleaf(algorithm, algorithm_name, x_train, y_train, x_test, y_test, n_leaf_min, n_leaf_max, n_estimator, n_depth, n_split):
-    train_score = []; test_score = []
+    train_score = []
+    test_score = []
     para_leaf = [n_leaf*2 for n_leaf in range(n_leaf_min, n_leaf_max)]
 
     for v_min_samples_leaf in para_leaf:
@@ -400,16 +470,41 @@ def optimi_minleaf(algorithm, algorithm_name, x_train, y_train, x_test, y_test, 
             
         model.fit(x_train, y_train)
 
-        train_score.append(model.score(x_train, y_train))
-        test_score.append(model.score(x_test, y_test))
+        train_accuracy = model.score(x_train, y_train)  # 훈련 세트 정확도
+        test_accuracy = model.score(x_test, y_test)    # 테스트 세트 정확도
+
+        train_score.append(train_accuracy)
+        test_score.append(test_accuracy)
 
     # 잎사귀 노드의 최소 자료 수에 따른 모델 성능 저장
-    df_score_n = pd.DataFrame({'min_samples_leaf': para_leaf, 'TrainScore': train_score, 'TestScore': test_score, 'diff': [train - test for train, test in zip(train_score, test_score)]})
+    df_score_n = pd.DataFrame({
+        'min_samples_leaf': para_leaf, 
+        'TrainScore': train_score, 
+        'TestScore': test_score,
+        'diff': [train - test for train, test in zip(train_score, test_score)]  # 학습-테스트 정확도 차이
+        })
+    
+    # diff가 일정 범위 이내로 작은 값들만 필터링 (여기서는 0.5 이하로 필터링)
+    filtered_df = df_score_n[df_score_n['diff'] <= 0.5]
+
+    # filtered_df가 빈 데이터프레임인 경우
+    if filtered_df.empty:
+        # 빈 데이터프레임일 경우 TestScore가 가장 높은 값을 선택
+        optimal_row = df_score_n.loc[df_score_n['TestScore'].idxmax()]
+    else:
+        # diff가 작은 값들 중에서 TestScore가 가장 높은 값의 min_samples_leaf 선택
+        optimal_row = filtered_df.loc[filtered_df['TestScore'].idxmax()]
+
+    # 최적의 min_samples_leaf 반환
+    optimal_min_samples_leaf = int(optimal_row['min_samples_leaf'])
 
     # 잎사귀 노드의 최소 자료 수에 따른 모델 성능 추이 시각화 함수 호출
     optimi_visualization(algorithm_name, para_leaf, train_score, test_score, "The minimum number of samples required to be at a leaf node", "min_samples_leaf")
 
     print(round(df_score_n, 4))
+    print(f"Optimal min_samples_leaf: {optimal_min_samples_leaf}")
+
+    return optimal_min_samples_leaf
 
 # 최종 모델 학습
 def model_final(ticker, algorithm, algorithm_name, feature_name, x_train, y_train, x_test, y_test, n_estimator, n_depth, n_split, n_leaf):
@@ -440,7 +535,7 @@ def model_final(ticker, algorithm, algorithm_name, feature_name, x_train, y_trai
     
     # 정확도, 정밀도, 재현율, F1 점수 계산 시 average 파라미터 수정
     print(f"Accuracy: {accuracy_score(y_test, y_pred):.3f}")  # 정확도
-    print(f"Precision: {precision_score(y_test, y_pred, average='macro'):.3f}")  # 정밀도 (다중 클래스에서는 macro, micro, weighted 중 선택)
+    print(f"Precision: {precision_score(y_test, y_pred, average='macro', zero_division=0):.3f}")  # 정밀도 (다중 클래스에서는 macro, micro, weighted 중 선택)
     print(f"Recall: {recall_score(y_test, y_pred, average='macro'):.3f}")  # 재현율
     print(f"F1-score: {f1_score(y_test, y_pred, average='macro'):.3f}")  # F1 스코어
     

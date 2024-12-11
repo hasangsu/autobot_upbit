@@ -14,6 +14,7 @@ from autobot_func import *
 # coin & env
 COINS = ["KRW-BTC", "KRW-XRP", "KRW-XLM", "KRW-ETH", "KRW-DOGE"]
 INTERVAL = "minute15"
+INTERVAL5 = "minute5"
 MINIMUM_TRADE_AMOUNT = 5000
 BUY_AMOUNT = 5000
 SELL_RATE = 0.5
@@ -75,7 +76,7 @@ def create_training_data(data):
 # 학습 및 모델 생성
 def train_model(ticker):
     print(f"[notify] start learning {ticker} model")
-    data = get_ohlcv_data(ticker, count=1000, period=1.5)
+    data = get_ohlcv_data(ticker, interval=INTERVAL5, count=1000, period=1.5)
     x, y = create_training_data(data)
     if x is None or len(x) == 0:
         print(f"[error] {ticker} 특징 데이터 부족")
@@ -91,13 +92,17 @@ def train_model(ticker):
     algorithm = RandomForestClassifier
     algorithm_name = 'rfc'
 
-    # 기본 보델 학습
+    # 기본 모델 학습
     modeling_uncustomized(algorithm, x_train, y_train, x_test, y_test)
     
-    n_estimator = 30
-    n_depth = 6
-    n_split = 20
-    n_leaf = 2
+    # n_estimator = 30
+    # n_depth = 6
+    # n_split = 20
+    # n_leaf = 2
+    n_estimator = optimi_estimator(algorithm, algorithm_name, x_train, y_train, x_test, y_test, 1, 51)
+    n_depth = optimi_maxdepth(algorithm, algorithm_name, x_train, y_train, x_test, y_test, 1, 31, n_estimator)
+    n_split = optimi_minsplit(algorithm, algorithm_name, x_train, y_train, x_test, y_test, 1, 101, n_estimator, n_depth)
+    n_leaf = optimi_minleaf(algorithm, algorithm_name, x_train, y_train, x_test, y_test, 1, 51, n_estimator, n_depth, n_split)
 
     model = model_final(ticker, algorithm, algorithm_name, x.columns,
             x_train, y_train, x_test, y_test,
@@ -200,13 +205,14 @@ def generate_signals(model, scaler, ticker):
 
 # 코인별 처리 함수
 def process_ticker(ticker):
-    remove_old_model(ticker, r"rf", ".", 5)
+    remove_old_model(ticker, r"rf", ".", 3)
     model, scaler = load_model(ticker, f"rf", f"pkl")
     if model is None or scaler is None:
         model, scaler = train_model(ticker)  # 모델 학습
         save_model(ticker, f"rf", f"pkl", model, scaler)
     
     try:
+        return
         generate_signals(model, scaler, ticker)
     except Exception as e:
         print(f"[error] 신호 생성 중 오류 발생 ({ticker}): {e}")
