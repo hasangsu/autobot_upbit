@@ -16,6 +16,7 @@ COINS = ["KRW-BTC", "KRW-XRP", "KRW-XLM", "KRW-ETH", "KRW-DOGE"]
 INTERVAL = "minute15"
 MINIMUM_TRADE_AMOUNT = 5000
 BUY_AMOUNT = 5000
+SELL_RATE = 0.5
 FEE_RATE = 0.0005 * 2  # 수수료 비율 (한번의 거래 수수료 0.05% * 매수와 매도)
 TRAILING_STOP_PERCENT = 0.02
 
@@ -126,6 +127,10 @@ def generate_signals(model, scaler, ticker):
         if current_price > trail_stop_price:  # trail_stop_price 기준 상승 확인
             trail_stop_price = max(trail_stop_price, new_trail_stop_price)
             save_trailing_stop(ticker, buy_price, trail_stop_price, ".")
+
+        # 시그널이 매수였지만, 현재가격이 트레일링스탑과 작거나 같아 시그널 변경
+        if signal == 1 and current_price <= trail_stop_price:
+            signal = -1
     
     trade_message = f"trade_bot({ticker}, {signal}) has been executed\n"
     if signal == 1:
@@ -171,7 +176,7 @@ def generate_signals(model, scaler, ticker):
             # 매도
             coin_balance = upbit.get_balance(ticker.split('-')[1])
             if coin_balance > 0:
-                sell_amount = coin_balance * 0.25
+                sell_amount = coin_balance * SELL_RATE
                 sell_value_in_krw = sell_amount * current_price
 
                 if sell_value_in_krw < 5000:
