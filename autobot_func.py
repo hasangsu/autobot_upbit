@@ -353,47 +353,71 @@ def optimi_estimator(algorithm, algorithm_name, x_train, y_train, x_test, y_test
 
 # 최대 깊이 선정
 def optimi_maxdepth (algorithm, algorithm_name, x_train, y_train, x_test, y_test, depth_min, depth_max, n_estimator):
-    train_score = []
-    test_score = []
-    para_depth = [depth for depth in range(depth_min, depth_max)]
-
-    for v_max_depth in para_depth:
-        # 의사결정나무 모델의 경우 트리 개수를 따로 설정하지 않기 때문에 RFC, GBC와 분리하여 모델링
-        if algorithm == RandomForestClassifier:
-            model = algorithm(max_depth = v_max_depth,
-                              random_state=1234)
-        else:
-            model = algorithm(max_depth = v_max_depth,
-                              n_estimators = n_estimator,
-                              random_state=1234)
-        
-        model.fit(x_train, y_train)
-
-        train_accuracy = model.score(x_train, y_train)  # 훈련 세트 정확도
-        test_accuracy = model.score(x_test, y_test)    # 테스트 세트 정확도
-
-        train_score.append(train_accuracy)
-        test_score.append(test_accuracy)
-
-    # 최대 깊이에 따른 모델 성능 저장
-    df_score_n = pd.DataFrame({
-        'depth': para_depth, 
-        'TrainScore': train_score, 
-        'TestScore': test_score,
-        'diff': [train - test for train, test in zip(train_score, test_score)]  # 학습-테스트 정확도 차이
-        })
+    best_depth = depth_min
+    best_accuracy = 0.0
     
-    # diff가 0에 가장 가까운 값을 찾아 선택
-    optimal_row = df_score_n.loc[df_score_n['diff'].abs().idxmin()]
+    # 지정된 범위 내에서 max_depth를 변화시키며 평가
+    for depth in range(depth_min, depth_max + 1):
+        # 랜덤 포레스트 모델을 생성하고 학습
+        model = algorithm(n_estimators=n_estimator, max_depth=depth)
+        model.fit(x_train, y_train)
+        
+        # 테스트 데이터에 대한 예측
+        y_pred = model.predict(x_test)
+        
+        # 정확도 계산
+        accuracy = accuracy_score(y_test, y_pred)
+        
+        # 최적의 정확도 및 깊이 갱신
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+            best_depth = depth
+            
+    print(f"최적의 {algorithm_name} 모델의 max_depth: {best_depth} (정확도: {best_accuracy:.4f})")
+    
+    # 최적의 모델 반환
+    return best_depth
+    # train_score = []
+    # test_score = []
+    # para_depth = [depth for depth in range(depth_min, depth_max)]
 
-    # 최적의 max_depth 반환
-    optimal_max_depth = int(optimal_row['depth'])
+    # for v_max_depth in para_depth:
+    #     # 의사결정나무 모델의 경우 트리 개수를 따로 설정하지 않기 때문에 RFC, GBC와 분리하여 모델링
+    #     if algorithm == RandomForestClassifier:
+    #         model = algorithm(max_depth = v_max_depth,
+    #                           random_state=1234)
+    #     else:
+    #         model = algorithm(max_depth = v_max_depth,
+    #                           n_estimators = n_estimator,
+    #                           random_state=1234)
+        
+    #     model.fit(x_train, y_train)
 
-    # 최대 깊이에 따른 모델 성능 추이 시각화 함수 호출
-    optimi_visualization(algorithm_name, para_depth, train_score, test_score, "The number of depth", "n_depth")
+    #     train_accuracy = model.score(x_train, y_train)  # 훈련 세트 정확도
+    #     test_accuracy = model.score(x_test, y_test)    # 테스트 세트 정확도
 
-    print(round(df_score_n, 4))
-    print(f"Optimal max_depth: {optimal_max_depth}")
+    #     train_score.append(train_accuracy)
+    #     test_score.append(test_accuracy)
+
+    # # 최대 깊이에 따른 모델 성능 저장
+    # df_score_n = pd.DataFrame({
+    #     'depth': para_depth, 
+    #     'TrainScore': train_score, 
+    #     'TestScore': test_score,
+    #     'diff': [train - test for train, test in zip(train_score, test_score)]  # 학습-테스트 정확도 차이
+    #     })
+    
+    # # diff가 0에 가장 가까운 값을 찾아 선택
+    # optimal_row = df_score_n.loc[df_score_n['diff'].abs().idxmin()]
+
+    # # 최적의 max_depth 반환
+    # optimal_max_depth = int(optimal_row['depth'])
+
+    # # 최대 깊이에 따른 모델 성능 추이 시각화 함수 호출
+    # optimi_visualization(algorithm_name, para_depth, train_score, test_score, "The number of depth", "n_depth")
+
+    # print(round(df_score_n, 4))
+    # print(f"Optimal max_depth: {optimal_max_depth}")
 
     return optimal_max_depth
 

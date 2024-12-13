@@ -205,7 +205,7 @@ def generate_signals(model, scaler, ticker):
 
 # 코인별 처리 함수
 def process_ticker(ticker):
-    remove_old_model(ticker, r"rf", ".", 3)
+    remove_old_model(ticker, r"rf", ".", 2)
     model, scaler = load_model(ticker, f"rf", f"pkl")
     if model is None or scaler is None:
         model, scaler = train_model(ticker)  # 모델 학습
