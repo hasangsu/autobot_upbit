@@ -4,6 +4,7 @@ load_dotenv()
 import pyupbit
 import pandas as pd
 import pandas_ta as ta
+import subprocess
 
 import json
 from openai import OpenAI
@@ -227,8 +228,16 @@ def get_current_base64_image():
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920x1080")
 
+        # 'which' 명령어를 사용하여 chromedriver의 경로를 찾음
+        def get_chromedriver_path():
+            try:
+            # 'which chromedriver' 명령어로 경로 찾기
+                return subprocess.check_output(['which', 'chromedriver']).strip().decode('utf-8')
+            except subprocess.CalledProcessError:
+                raise Exception("Error not install chromedriver.")
+    
         # service = Service('/usr/local/bin/chromedriver')  # Specify the path to the ChromeDriver executable
-        service = Service('/opt/homebrew/bin/chromedriver')
+        service = Service(get_chromedriver_path())
 
         # Initialize the WebDriver with the specified options
         driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -381,6 +390,8 @@ def make_decision_and_execute():
 if __name__ == "__main__":
     initialize_db()
 
+    get_current_base64_image()
+
     # Schedule the task to run at 00:01
     schedule.every().day.at("00:01").do(make_decision_and_execute)
 
@@ -392,4 +403,5 @@ if __name__ == "__main__":
 
     while True:
         schedule.run_pending()
+        print(f"sleep 1.")
         time.sleep(1)
