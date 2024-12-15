@@ -23,7 +23,6 @@ import base64
 # Setup
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 upbit = pyupbit.Upbit(os.getenv("UPBIT_ACCESS_KEY"), os.getenv("UPBIT_SECRET_KEY"))
-first_request = True
 
 def initialize_db(db_path='trading_decisions.sqlite'):
     with sqlite3.connect(db_path) as conn:
@@ -302,6 +301,7 @@ def analyze_data_with_gpt4(news_data, data_json, last_decisions, fear_and_greed,
             return None
         
         request_messages = [
+            {"role": "system", "content": instructions},
             {"role": "user", "content": news_data},
             {"role": "user", "content": data_json},
             {"role": "user", "content": last_decisions},
@@ -309,11 +309,6 @@ def analyze_data_with_gpt4(news_data, data_json, last_decisions, fear_and_greed,
             {"role": "user", "content": current_status},
             {"role": "user", "content": [{"type": "image_url","image_url": {"url": f"data:image/jpeg;base64,{current_base64_image}"}}]}
         ]
-
-        global first_request
-        if first_request:
-            request_messages.insert(0, {"role": "system", "content": instructions})
-            first_request = False
 
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -403,5 +398,4 @@ if __name__ == "__main__":
 
     while True:
         schedule.run_pending()
-        print(f"sleep 1.")
         time.sleep(1)
