@@ -18,7 +18,6 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 import base64
 
 # Setup
@@ -229,16 +228,16 @@ def get_current_base64_image():
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920x1080")
 
-        # # 'which' 명령어를 사용하여 chromedriver의 경로를 찾음
-        # def get_chromedriver_path():
-        #     try:
-        #     # 'which chromedriver' 명령어로 경로 찾기
-        #         return subprocess.check_output(['which', 'chromedriver']).strip().decode('utf-8')
-        #     except subprocess.CalledProcessError:
-        #         raise Exception("Error not install chromedriver.")
+        # 'which' 명령어를 사용하여 chromedriver의 경로를 찾음
+        def get_chromedriver_path():
+            try:
+            # 'which chromedriver' 명령어로 경로 찾기
+                return subprocess.check_output(['which', 'chromedriver']).strip().decode('utf-8')
+            except subprocess.CalledProcessError:
+                raise Exception("Error not install chromedriver.")
     
         # service = Service('/usr/local/bin/chromedriver')  # Specify the path to the ChromeDriver executable
-        service = Service(ChromeDriverManager().install())
+        service = Service(get_chromedriver_path())
 
         # Initialize the WebDriver with the specified options
         driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -268,6 +267,8 @@ def get_current_base64_image():
         driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight / 2.5", indicators_container)
 
         # Wait for the "MACD" indicator to be clickable and click it
+        macd_indicator = wait.until(EC.presence_of_element_located((By.XPATH, "//cq-item[translate[@original='MACD']]")))
+        driver.execute_script("arguments[0].scrollIntoView();", macd_indicator)
         macd_indicator = wait.until(EC.element_to_be_clickable((By.XPATH, "//cq-item[translate[@original='MACD']]")))
         macd_indicator.click()
 
@@ -390,7 +391,7 @@ def make_decision_and_execute():
 
 if __name__ == "__main__":
     initialize_db()
-    
+
     # Schedule the task to run at 00:01
     schedule.every().day.at("00:01").do(make_decision_and_execute)
 
