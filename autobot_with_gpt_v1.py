@@ -24,6 +24,31 @@ import base64
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 upbit = pyupbit.Upbit(os.getenv("UPBIT_ACCESS_KEY"), os.getenv("UPBIT_SECRET_KEY"))
 
+# slack notify
+def notify_slack(url, msg, title):
+    try:
+        # 메시지 전송
+        requests.post(
+            url,
+            headers={
+                'content-type': 'application/json'
+            },
+            json={
+                'text': title,
+                'blocks': [
+                    {
+                        'type': 'section',
+                        'text': {
+                            'type': 'mrkdwn',
+                            'text': msg
+                        }
+                    }
+                ]
+            }
+        )
+    except Exception as ex:
+        print(ex)
+
 def initialize_db(db_path='trading_decisions.sqlite'):
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -380,6 +405,9 @@ def make_decision_and_execute():
                 elif decision.get('decision') == "sell":
                     execute_sell(percentage)
                 
+                slack_message = f"Decision: {decision.get('decision')}, Percentage: {percentage}, Reason: {decision.get('reason', '')}"
+                notify_slack(os.getenv("SLACK_HOOKS_URL"), slack_message, "notify")
+
                 save_decision_to_db(decision, current_status)
             except Exception as e:
                 print(f"Failed to execute the decision or save to DB: {e}")
